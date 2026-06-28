@@ -1,0 +1,151 @@
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include <WiFi.h>
+#include <HTTPClient.h>
+
+// Configuración de la pantalla OLED
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+
+// CONFIGURACIÓN DE RED
+const char* ssid = "NOMBRE_DEL_WIFI";
+const char* password = "CONTRASEÑA_DEL_WIFI";
+
+// CONFIGURACIÓN DE THINGSPEAK TALKBACK 
+const char* talkbackID = "TALKBACK_ID";
+const char* talkbackAPIKey = "TALKBACK_API_KEY";
+
+// Control de tiempo para no saturar el servidor ni el ESP32
+unsigned long ultimaConsulta = 0;
+const unsigned long intervaloConsulta = 15000; // Consulta cada 15 segundos (Recomendado)
+
+void setup() {
+  Serial.begin(115200);
+
+  // Inicializar Pantalla OLED
+  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println(F("Error al iniciar OLED"));
+    for(;;);
+  }
+  
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0,0);
+  display.println("Conectando a WiFi...");
+  display.display();
+
+  // Conectar a Internet
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  display.clearDisplay();
+  display.setCursor(0,0);
+  display.println("¡WiFi Conectado!");
+  display.print("IP: ");
+  display.println(WiFi.localIP());
+  display.display();
+  delay(2000);
+  
+  display.clearDisplay();
+  display.display();
+}
+
+void loop() {
+  // Revisa TalkBack solo cuando se cumple el intervalo establecido
+  if (millis() - ultimaConsulta >= intervaloConsulta) {
+    ultimaConsulta = millis();
+    
+    if (WiFi.status() == WL_CONNECTED) {
+      revisarTalkBack();
+    } else {
+      Serial.println("WiFi desconectado, intentando reconectar...");
+      WiFi.begin(ssid, password);
+    }
+  }
+}
+
+// Función para convertir caracteres Hexadecimales a bytes
+byte charToHex(char c) {
+  if (c >= '0' && c <= '9') return c - '0';
+  if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+  if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+  return 0;
+}
+
+// Procesa la cadena Hex de la imagen completa
+void procesarImagen(String rawData) {
+  uint8_t bufferImagen[1024];
+  memset(bufferImagen, 0, sizeof(bufferImagen)); // Limpiar buffer
+  int byteCount = 0;
+
+  for (int i = 0; i < rawData.length() - 3; i++) {
+    if (rawData[i] == '0' && (rawData[i+1] == 'x' || rawData[i+1] == 'X')) {
+      char h1 = rawData[i+2];
+      char h2 = rawData[i+3];
+      
+      bufferImagen[byteCount] = (charToHex(h1) << 4) | charToHex(h2);
+      byteCount++;
+      
+      if (byteCount >= 1024) break; // Límite de la pantalla alcanzado
+      i += 3; 
+    }
+  }
+
+  display.clearDisplay();
+  display.drawBitmap(0, 0, bufferImagen, 128, 64, SSD1306_WHITE);
+  display.display();
+  Serial.println("Imagen cargada con éxito.");
+}
+
+// Función principal que conecta con ThingSpeak
+void revisarTalkBack() {
+  HTTPClient http;
+  
+  // Usamos el método 'execute' que descarga el comando más antiguo y lo borra de la lista automáticamente
+  String url = "http://api.thingspeak.com/talkbacks/" + String(talkbackID) + "/commands/execute?api_key=" + String(talkbackAPIKey);
+  
+  http.begin(url);
+  int httpCode = http.GET();
+  
+  if (httpCode == 200) {
+    String comando = http.getString();
+    comando.trim();
+    
+    if (comando.length() > 0) {
+      Serial.println("Comando Recibido: " + comando);
+      
+      // ACCIÓN 1: Limpiar
+      if (comando == "CLEAR") {
+        display.clearDisplay();
+        display.display();
+        Serial.println("Pantalla Limpia");
+      } 
+      // ACCIÓN 2: Escribir Texto
+      else if (comando.startsWith("TXT:")) {
+        String mensaje = comando.substring(4); // Extrae lo que esté después de "TXT:"
+        display.clearDisplay();
+        display.setCursor(0, 10);
+        display.setTextSize(2); // Texto más grande y legible
+        display.println(mensaje);
+        display.display();
+      } 
+      // ACCIÓN 3: Cargar Imagen Completa
+      else if (comando.startsWith("IMG:")) {
+        String datosHex = comando.substring(4); // Extrae la cadena de bytes
+        procesarImagen(datosHex);
+      }
+    } else {
+      Serial.println("No hay comandos pendientes.");
+    }
+  } else {
+    Serial.print("Error consultando ThingSpeak. Código: ");
+    Serial.println(httpCode);
+  }
+  http.end();
+}
