@@ -25,6 +25,6 @@ Control de Estado: Capacidad de limpieza remota del dispositivo para asegurar un
 Optimización de Recursos: Implementación de consultas no bloqueantes mediante millis() para garantizar que el ESP32 mantenga su estabilidad operativa y no se sature durante el proceso de conexión.
 
 Aplicaciones Prácticas
-Notificaciones Inteligentes: Ideal para escritorios inteligentes donde se requiera visualizar recordatorios o mensajes rápidos de forma no intrusiva.
+Notificaciones Inteligentes: Ideal para escritorios inteligentes donde se requiera visualizar recordatorios.
 
 Displays Informativos Remotos: Útil para mostrar estados de sensores, mensajes de bienvenida o señalética digital en entornos de oficina o estudio.
