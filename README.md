@@ -38,7 +38,7 @@ Displays Informativos Remotos: Útil para mostrar estados de sensores, mensajes 
 1. Introducción
 El proyecto consiste en un sistema embebido basado en un microcontrolador ESP32 que actúa como un servidor web inalámbrico (punto de acceso), permitiendo a cualquier dispositivo móvil conectarse y controlar visualmente una pantalla OLED de forma remota. El sistema utiliza protocolos de comunicación inalámbrica para recibir comandos de dibujo y renderizarlos en tiempo real.
 
-2. Arquitectura del Sistema
+ Arquitectura del Sistema
 El sistema se divide en tres capas fundamentales:
 
 Capa de Conectividad (Wi-Fi): El ESP32 opera en modo Access Point, creando una red local propia. Esto permite que el teléfono se conecte directamente al dispositivo sin necesidad de un router externo.
@@ -46,3 +46,6 @@ Capa de Conectividad (Wi-Fi): El ESP32 opera en modo Access Point, creando una r
 Capa de Servidor (HTTP): Se implementa un servidor web ligero que escucha peticiones a través del protocolo HTTP. Los comandos de la aplicación móvil (dibujar puntos o cargar imágenes) llegan como peticiones web que el microcontrolador procesa de forma asíncrona.
 
 Capa de Visualización (I2C): La comunicación con la pantalla OLED se realiza mediante el bus I2C, garantizando una transferencia de datos fluida entre el microcontrolador y el control de la pantalla.
+
+ Ventajas del Diseño
+Alta Capacidad de Respuesta: El usuario experimenta una respuesta inmediata al tocar la pantalla del móvil, independientemente de la velocidad de dibujo.
