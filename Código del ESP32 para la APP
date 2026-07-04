@@ -1,0 +1,114 @@
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include <WiFi.h>
+#include <WebServer.h>
+// Contraseña del interned que genera es: 12345678
+// Configuración de la pantalla OLED
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+
+// Servidor Web en el puerto 80 (Faltaba en tu código)
+WebServer server(80);
+
+// Variables para controlar la saturación de pantalla (Refresco a máximo 30 FPS)
+unsigned long ultimoRefresco = 0;
+const unsigned long INTERVALO_REFRESCO = 33; // 33 milisegundos = ~30 FPS
+bool actualizarPantalla = false;
+
+// Función auxiliar para convertir caracteres hexadecimales a números
+byte charToHex(char c) {
+  if (c >= '0' && c <= '9') return c - '0';
+  if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+  if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+  return 0;
+}
+
+// Función que se ejecuta cuando la App envía datos
+void handleDibujar() {
+  if (server.hasArg("x") && server.hasArg("y")) {
+    int x = server.arg("x").toInt();
+    int y = server.arg("y").toInt();
+    
+    // Dibujamos el punto en la memoria, PERO NO actualizamos la pantalla todavía
+    display.fillRect(x, y, 2, 2, SSD1306_WHITE); 
+    actualizarPantalla = true; // Avisamos que hay cambios pendientes
+    
+    server.send(200, "text/plain", "OK");
+  } else {
+    server.send(400, "text/plain", "Faltan coordenadas");
+  }
+}
+
+// Función para limpiar la pantalla desde la App
+void handleLimpiar() {
+  display.clearDisplay();
+  actualizarPantalla = true;
+  server.send(200, "text/plain", "Pantalla limpia");
+}
+
+void handleCargarImagen() {
+  if (server.hasArg("datos")) {
+    // Usamos una referencia (const String&) para no duplicar la memoria RAM. 
+    // Un String de 1024 bytes consume mucho si se copia.
+    const String& rawData = server.arg("datos"); 
+    
+    uint8_t bufferImagen[1024] = {0}; // Inicializado en 0 directamente
+    int byteCount = 0;
+    int len = rawData.length();
+    
+    for (int i = 0; i < len - 3 && byteCount < 1024; i++) {
+      if (rawData[i] == '0' && (rawData[i+1] == 'x' || rawData[i+1] == 'X')) {
+        char h1 = rawData[i+2];
+        char h2 = rawData[i+3];
+        bufferImagen[byteCount] = (charToHex(h1) << 4) | charToHex(h2);
+        byteCount++;
+        i += 3; 
+      }
+    }
+    
+    display.clearDisplay();
+    display.drawBitmap(0, 0, bufferImagen, 128, 64, SSD1306_WHITE);
+    actualizarPantalla = true; // Avisamos que hay que refrescar
+    
+    server.send(200, "text/plain", "Imagen cargada con exito");
+  } else {
+    server.send(400, "text/plain", "Faltan datos de la imagen");
+  }
+}
+
+void setup() {
+  // Inicializamos la pantalla
+  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    for(;;); // Si falla la pantalla, se detiene aquí
+  }
+  
+  // ACELERAR LA PANTALLA: Aumentamos la velocidad del bus I2C a 400 kHz
+  Wire.setClock(400000);
+
+  display.clearDisplay();
+  display.display();
+
+  // Configurar WiFi
+  WiFi.softAP("ESP32_Dibujo", "12345678"); 
+  
+  // Configurar las rutas del servidor web
+  server.on("/dibujar", HTTP_GET, handleDibujar);
+  server.on("/limpiar", HTTP_GET, handleLimpiar);
+  server.on("/cargar_imagen", HTTP_POST, handleCargarImagen); // Mejor si la app usa POST para textos largos
+  
+  server.begin();
+}
+
+void loop() {
+  // Atendemos a la aplicación móvil lo más rápido posible
+  server.handleClient();
+
+  // Controlamos la pantalla de forma independiente
+  if (actualizarPantalla && (millis() - ultimoRefresco >= INTERVALO_REFRESCO)) {
+    display.display(); // Enviamos los datos físicos a la OLED
+    ultimoRefresco = millis();
+    actualizarPantalla = false; // Ya actualizamos, esperamos nuevos cambios
+  }
+}
